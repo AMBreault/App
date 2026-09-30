@@ -1,0 +1,303 @@
+//advanced working II
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Post-Therapy Tracker</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 650px; margin: 20px auto; padding: 0 15px; color: #333; background-color: #f4f6f9; }
+        h1, h2 { color: #0056b3; margin-bottom: 5px; }
+        p { margin-top: 0; color: #666; font-size: 14px; }
+        .card { border: 1px solid #e0e0e0; padding: 15px; border-radius: 12px; margin-bottom: 20px; background-color: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .tabs-container { display: flex; gap: 8px; margin-bottom: 15px; overflow-x: auto; padding-bottom: 5px; }
+        .tab-btn { background-color: #e9ecef; color: #495057; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 14px; white-space: nowrap; }
+        .tab-btn.active { background-color: #0056b3; color: white; }
+        .exercise-row { display: grid; grid-template-columns: 2fr 1fr 2fr auto; gap: 8px; align-items: center; padding: 10px 0; border-bottom: 1px solid #eee; }
+        .exercise-row:last-child { border-bottom: none; }
+        .exercise-name { font-weight: bold; font-size: 14px; }
+        .badge { display: inline-block; font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; margin-top: 2px; width: fit-content; }
+        .badge.strength { background-color: #e3f2fd; color: #0d47a1; }
+        .badge.speed { background-color: #fff3e0; color: #e65100; }
+        .sets-reps-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+        input, select { width: 100%; padding: 6px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; text-align: center; }
+        .log-btn { background-color: #0056b3; color: white; padding: 6px 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .delete-btn { background-color: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        @media (max-width: 500px) {
+            .exercise-row { grid-template-columns: 1fr 1fr auto; }
+            .exercise-meta { grid-column: span 3; }
+        }
+    </style>
+</head>
+<body>
+
+    <h1>CISM Aftercare Program </h1>
+    <p>Your data is saved securely <strong>only</strong> on this device. If at any time you feel pain during an exercise stop.  </p>
+
+    <div class="card">
+        <h2>Log Your Routine</h2>
+        <div class="tabs-container" id="tabsContainer"></div>
+        <div id="exerciseContainer"></div>
+    </div>
+
+    <div class="card" style="overflow-x: auto;">
+        <h2>Your Workout History</h2>
+	<p> For strength progress shoot for 70%-80% of 1 rep max. (1RM)
+        <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;">
+            <thead>
+                <tr style="background-color: #0056b3; color: white;">
+                    <th style="padding: 8px;">Exercise</th>
+                    <th style="padding: 8px; text-align: center;">Weight</th>
+                    <th style="padding: 8px; text-align: center;">Volume/Intensity</th>
+                    <th style="padding: 8px;">Feedback</th>
+                    <th style="padding: 8px; text-align: center;">Action</th>
+                </tr>
+            </thead>
+            <tbody id="historyList"></tbody>
+        </table>
+    </div>
+ <script>
+        const routinesByDay = {
+            "Strength 2x per week": [
+                { name: "Squats", type: "strength", tracking: "sets-reps" },
+                { name: "Glute Bridges", type: "strength", tracking: "sets-reps" },
+                { name: "sQUATS", type: "strength", tracking: "sets-reps" },
+		{ name: "RDL", type: "strength", tracking: "sets-reps" },
+		{ name: "band walk", type: "endurance", tracking: "rpe" }
+            ],
+            " Speed 2x per week": [
+                { name: "Shoulder Press", type: "strength", tracking: "sets-reps" },
+                { name: "Bicep Curls", type: "strength", tracking: "sets-reps" },
+                { name: "sQUATS", type: "speed", tracking: "rpe" },
+		{ name: "Wall Slides", type: "speed", tracking: "rpe" }
+           
+            ],
+            "Cardio/Endurance": [
+                { name: "Stationary Bike", type: "endurance", tracking: "time-rpe" },
+                { name: "Treadmill Walk", type: "endurance", tracking: "time-rpe" }
+            ]
+        };
+
+        let currentDayTab = "Strength 2x per week";
+        let workoutHistory = [];
+
+        try {
+            let data = localStorage.getItem('myWorkouts');
+            if (data) {
+                let parsed = JSON.parse(data);
+                if (Array.isArray(parsed)) workoutHistory = parsed;
+            }
+        } catch (e) { console.log("Storage bypass active."); }
+
+        function buildTabs() {
+            const container = document.getElementById('tabsContainer');
+            if (!container) return;
+            container.innerHTML = Object.keys(routinesByDay).map(day => `
+                <button class="tab-btn ${day === currentDayTab ? 'active' : ''}" onclick="switchTab('${day}')">
+                    ${day}
+                </button>
+            `).join('');
+        }
+
+        window.switchTab = function(day) {
+            currentDayTab = day;
+            buildTabs();
+            buildExerciseRows();
+        };
+
+        function buildExerciseRows() {
+            const container = document.getElementById('exerciseContainer');
+            if (!container) return;
+            container.innerHTML = routinesByDay[currentDayTab].map((ex, i) => {
+                let weightHtml = "";
+                let trackingHtml = "";
+
+                if (ex.type === "endurance") {
+                    weightHtml = `<div><input type="number" id="time-${i}" placeholder="Mins" min="0"></div>`;
+                    trackingHtml = `
+                        <div>
+                            <select id="rpe-${i}">
+                                <option value="">RPE...</option>
+                                <option value="10">10 - Max</option>
+                                <option value="9">9 - Heavy</option>
+                                <option value="8">8 - Mod Heavy</option>
+                                <option value="7">7 - Moderate</option>
+                                <option value="6">6 - Light</option>
+                            </select>
+                        </div>
+                    `;
+                } else {
+                    let weightPlaceholder = ex.type === "speed" ? "lbs (opt)" : "lbs";
+                    weightHtml = `<div><input type="number" id="weight-${i}" placeholder="${weightPlaceholder}" min="0"></div>`;
+                    
+                    trackingHtml = ex.tracking === "rpe" ? `
+                        <div>
+                            <select id="rpe-${i}">
+                                <option value="">RPE...</option>
+                                <option value="10">10 - Max</option>
+                                <option value="9">9 - Heavy</option>
+                                <option value="8">8 - Mod Heavy</option>
+                                <option value="7">7 - Moderate</option>
+                                <option value="6">6 - Light</option>
+                            </select>
+                        </div>
+                    ` : `
+                        <div class="sets-reps-inputs">
+                            <input type="number" id="sets-${i}" placeholder="Sets" min="0">
+                            <input type="number" id="reps-${i}" placeholder="Reps" min="0">
+                        </div>
+                    `;
+                }
+
+                return `
+                    <div class="exercise-row">
+                        <div class="exercise-meta">
+                            <div class="exercise-name">${ex.name}</div>
+                            <span class="badge ${ex.type}">${ex.type}</span>
+                        </div>
+                        ${weightHtml}
+                        ${trackingHtml}
+                        <div><button class="log-btn" onclick="saveExerciseSet(${i})">Log</button></div>
+                    </div>
+                `;
+            }).join('');
+        }
+window.saveExerciseSet = function(i) {
+            const config = routinesByDay[currentDayTab][i];
+            const today = new Date().toLocaleDateString();
+            
+            let data = { 
+                exercise: config.name, 
+                type: config.type, 
+                tracking: config.tracking,
+                date: today 
+            };
+
+            if (config.type === "endurance") {
+                const tInput = document.getElementById(`time-${i}`);
+                const rSelect = document.getElementById(`rpe-${i}`);
+                if (!tInput || !tInput.value || !rSelect || !rSelect.value) {
+                    return alert("Please enter time duration and select an RPE score.");
+                }
+                data.duration = parseInt(tInput.value);
+                data.rpe = parseInt(rSelect.value);
+                tInput.value = ""; rSelect.value = "";
+            } else {
+                const wInput = document.getElementById(`weight-${i}`);
+                if (config.type !== "speed" && (!wInput || !wInput.value)) {
+                    return alert("Please enter weight for strength exercises.");
+                }
+                data.weight = wInput.value ? parseInt(wInput.value) : null;
+
+                if (config.tracking === "rpe") {
+                    const rSelect = document.getElementById(`rpe-${i}`);
+                    if (!rSelect || !rSelect.value) return alert("Select RPE.");
+                    data.rpe = parseInt(rSelect.value);
+                    rSelect.value = "";
+                } else {
+                    const sInput = document.getElementById(`sets-${i}`);
+                    const repInput = document.getElementById(`reps-${i}`);
+                    if (!sInput || !repInput || !sInput.value || !repInput.value) return alert("Enter sets and reps.");
+                    data.sets = parseInt(sInput.value);
+                    data.reps = parseInt(repInput.value);
+                    sInput.value = ""; repInput.value = "";
+                }
+                if (wInput) wInput.value = "";
+            }
+
+            workoutHistory.push(data);
+            try { localStorage.setItem('myWorkouts', JSON.stringify(workoutHistory)); } catch(e){}
+            displayHistory();
+        };
+
+        function displayHistory() {
+            const list = document.getElementById('historyList');
+            if (!list) return;
+            if (workoutHistory.length === 0) {
+                list.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:15px; color:#888;">No history yet.</td></tr>`;
+                return;
+            }
+
+            const groups = {};
+            workoutHistory.forEach((item, index) => {
+                const dateKey = item.date || "Prior Logs";
+                if (!groups[dateKey]) groups[dateKey] = [];
+                groups[dateKey].push({ item, index });
+            });
+
+            let finalHtml = "";
+
+            Object.keys(groups).reverse().forEach(date => {
+                finalHtml += `
+                    <tr style="background-color: #e9ecef; font-weight: bold; color: #495057;">
+                        <td colspan="5" style="padding: 6px 10px; border-top: 1px solid #ccc;">📅 Session Date: ${date}</td>
+                    </tr>
+                `;
+
+                groups[date].forEach(({ item, index }) => {
+                    let displayWeight = "—";
+                    let vol = "";
+                    let tip = '👍 Maintain ';
+                    
+                    if (item.type === "endurance") {
+                        vol = `Time: <strong>${item.duration || 0}m</strong> (RPE: ${item.rpe || 7})`;
+                        let rpeVal = item.rpe || 7;
+                        if (rpeVal >= 9) tip = '<span style="color:#dc3545; font-weight:bold;">⚠️ Heavy: Watch fatigue</span>';
+                        else if (rpeVal <= 6) tip = '<span style="color:#28a745; font-weight:bold;">📈 Progress: Increase time or add ressistance </span>';
+                    } else {
+                        let isRpe = item.tracking === "rpe" || ('rpe' in item);
+                        vol = isRpe ? `RPE: <strong>${item.rpe || 7}</strong>` : `<strong>${item.sets || 0}</strong>×<strong>${item.reps || 0}</strong>`;
+                        let metric = isRpe ? (item.rpe || 7) : (item.reps || 0);
+                        
+                        if (isRpe ? metric >= 9 : metric <= 6) {
+                            tip = '<span style="color:#dc3545; font-weight:bold;">⚠️ Heavy: Watch form</span>';
+                        } else if (isRpe ? metric <= 6 : metric >= 12) {
+                            if (item.type === "speed") {
+                                tip = '<span style="color:#28a745; font-weight:bold;">📈 Progress: Increase time/reps</span>';
+                            } else {
+                                tip = '<span style="color:#28a745; font-weight:bold;">📈 Progress weight</span>';
+                            }
+                        }
+                        
+                        // Strength 1-Rep Max calculation using the Epley formula
+                        if (item.type === "strength" && item.tracking === "sets-reps" && item.weight && item.reps) {
+                            let estimated1RM = Math.round(item.weight * (1 + (item.reps / 30)));
+                            let pctOf1RM = Math.round((item.weight / estimated1RM) * 100);
+                            displayWeight = `<strong>${item.weight} lbs</strong><br><span style="font-size: 11px; color: #555;">Est. 1RM: ${estimated1RM} lbs (${pctOf1RM}%)</span>`;
+                        } else {
+                            displayWeight = (item.weight !== null && item.weight !== undefined) ? `${item.weight} lbs` : `—`;
+                        }
+                    }
+
+                    finalHtml += `
+                        <tr style="border-bottom:1px solid #eee;">
+                            <td style="padding:8px; padding-left:15px;">
+                                <div style="font-weight: 500;">${item.exercise}</div>
+                                <span class="badge ${item.type || 'strength'}">${item.type || 'strength'}</span>
+                            </td>
+                            <td style="padding:8px; text-align:center; vertical-align:middle;">${displayWeight}</td>
+                            <td style="padding:8px; text-align:center; vertical-align:middle;">${vol}</td>
+                            <td style="padding:8px; vertical-align:middle;">${tip}</td>
+                            <td style="padding:8px; text-align:center; vertical-align:middle;"><button class="delete-btn" onclick="deleteRow(${index})">Delete</button></td>
+                        </tr>
+                    `;
+                });
+            });
+
+            list.innerHTML = finalHtml;
+        }
+
+        window.deleteRow = function(index) {
+            if (confirm("Delete entry?")) {
+                workoutHistory.splice(index, 1);
+                try { localStorage.setItem('myWorkouts', JSON.stringify(workoutHistory)); } catch(e){}
+                displayHistory();
+            }
+        };
+
+        buildTabs();
+        buildExerciseRows();
+        displayHistory();
+    </script>
+</body>
+</html>
